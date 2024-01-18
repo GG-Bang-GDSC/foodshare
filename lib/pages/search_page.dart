@@ -141,7 +141,9 @@ class _SearchPageState extends State<SearchPage> {
         ),
         leadingWidth: 42,
         leading: GestureDetector(
-          onTap: (){},
+          onTap: (){
+            Navigator.pop(context);
+          },
           child: Padding(
             padding: EdgeInsets.only(left: 20),
             child: Icon(

@@ -39,10 +39,18 @@ class _ResultsPageState extends State<ResultsPage> {
         foodResults[restaurantIndex - 1].add(fdb.foodItems[i]);
       }
     }
-
+    Map findItemById(int id, List myListOfMaps) {
+      for(int i =0; i<myListOfMaps.length; i++){
+        Map item = myListOfMaps[i] as Map;
+        if(item["id"] == id){
+          return item;
+        } 
+      }
+      return  {};
+    }
     for(int j=0; j < foodResults.length; j++){
       if(foodResults[j].length > 0){
-        Map restaurantObj = fdb.restaurantItems[j] as Map;
+        Map restaurantObj = findItemById(j+1, fdb.restaurantItems);
         restaurantObj["foods"] = foodResults[j];
         restaurants.add(restaurantObj);
       }
@@ -76,6 +84,15 @@ class _ResultsPageState extends State<ResultsPage> {
       });
     }
   }
+  List restaurantFoods(id){
+    List foods = [];
+    for(int i = 0; i<fdb.foodItems.length;i++){
+      if(fdb.foodItems[i]["restaurantId"] == id){
+        foods.add(fdb.foodItems[i]);
+      }
+    }
+    return foods;
+  }
   void changeSort(int index){
     setState(() {
       _selectedSort = index;
@@ -83,7 +100,20 @@ class _ResultsPageState extends State<ResultsPage> {
       sortRestaurant(index);
     });
   }
-
+  void checkDishes(int id, String name, String restaurantImg, num distance, List category, String discount, double rating){
+    Map _restaurantData = {
+      "id": id,
+      "name": name,
+      "img": restaurantImg,
+      "distance": distance,
+      "category": category,
+      "discount": discount,
+      "rating": rating,
+      "foods": restaurantFoods(id)
+    }; 
+    print(_restaurantData);
+    Navigator.pushNamed(context, "/restaurantpage", arguments: _restaurantData);
+  }
 
 
   @override
@@ -207,7 +237,7 @@ class _ResultsPageState extends State<ResultsPage> {
     );
   }
 
-  Widget restaurantBox(String name, String restaurantImg, double distance, List category, String discount, double rating, List dishes){
+  Widget restaurantBox( int id, String name, String restaurantImg, num distance, List category, String discount, double rating, List dishes){
     String _overflowText(String text, int limit){
       if (text.length >= limit){
         return text.substring(0, limit - 3) + "...";
@@ -217,202 +247,205 @@ class _ResultsPageState extends State<ResultsPage> {
     }
     int namelimit = 16;
     int categorylimit = 35;
-    
-    return Container(
-          padding: EdgeInsets.only(left: 20),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 106,
-                height: 110,
-                decoration: BoxDecoration(
-                  image: DecorationImage(
-                    image: NetworkImage(
-                      restaurantImg,
+
+    return GestureDetector(
+      onTap: () => checkDishes(id, name, restaurantImg, distance, category, discount, rating),
+      child: Container(
+            padding: EdgeInsets.only(left: 20),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 106,
+                  height: 110,
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
+                      image: NetworkImage(
+                        restaurantImg,
+                      ),
+                      fit: BoxFit.cover,
                     ),
-                    fit: BoxFit.cover,
+                    borderRadius: BorderRadius.circular(12)
                   ),
-                  borderRadius: BorderRadius.circular(12)
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(height: 15,),
-                    Container(
-                      height: 23,
-                      width: 60,
-                      decoration: BoxDecoration(
-                        color: Color.fromRGBO(43, 192, 159, 1),
-                        borderRadius: BorderRadius.only(topRight: Radius.circular(100), bottomRight: Radius.circular(100)),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.25),
-                            spreadRadius: 5,
-                            blurRadius: 7,
-                            offset: Offset(2, 3),
-                          ),
-                        ],
-                      ),
-                      child: Center(
-                        child: Row(
-                          children: [
-                            SizedBox(width: 4,),
-                            Icon(
-                              Icons.star,
-                              color: Colors.yellow,
-                              size: 18,
-                            ),
-                            SizedBox(width: 3,),
-                            Text(
-                              rating.toString(),
-                              style: TextStyle(
-                                fontFamily: "Urbanist",
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                                fontSize: 14
-                              ),
-                            )
-                          ],
-                        ),
-                      ),
-                    )
-                  ],
-                ),
-              ),
-              Expanded(
-                child: Container(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      SizedBox(height: 15,),
                       Container(
-                        padding: EdgeInsets.symmetric(horizontal: 20),
-                        height: 110,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    _overflowText(name, namelimit),
-                                    style: TextStyle(
-                                      fontFamily: "Urbanist",
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 21
-                                    ),
-                                  ),
-                                ),
-                                Container(
-                                  width: 50,
-                                  child: Center(
-                                    child: Text(
-                                      "${distance} km",
-                                      style: TextStyle(
-                                        fontFamily: "Urbanist",
-                                        fontSize: 13
-                                      ),
-                                    ),
-                                  ),
-                                )
-                              ],
-                            ),
-                            Text(
-                              _overflowText(category.join(", "), categorylimit),
-                              style: TextStyle(
-                                fontFamily: "Urbanist",
-                                fontSize: 13
-                              ),
-                            ),
-                            SizedBox(height: 5,),
-                            Row(
-                              children: List.generate(150~/3, (index) => Expanded(
-                                  child: Container(
-                                    color: index%2==0?Colors.black38
-                                    :Colors.transparent,
-                                    height: 1,
-                                  ),
-                                )),
-                            ),
-                            SizedBox(height: 5,),
-                            if (discount != "") Row(
-                              children: [
-                                Icon(
-                                  Icons.local_fire_department,
-                                  color: Colors.orange,
-                                  size: 18,
-                                ),
-                                SizedBox(width: 5,),
-                                Text(
-                                  discount,
-                                  style: TextStyle(
-                                    fontFamily: "Urbanist",
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 2,),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.timer_sharp,
-                                  color: Colors.red,
-                                  size: 18,
-                                ),
-                                SizedBox(width: 5,),
-                                Text(
-                                  "Delivery in ${distance.floor() * 10} - ${distance.floor() * 10 + 10} min",
-                                  style: TextStyle(
-                                    fontFamily: "Urbanist",
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700
-                                  ),
-                                ),
-                              ],
+                        height: 23,
+                        width: 60,
+                        decoration: BoxDecoration(
+                          color: Color.fromRGBO(43, 192, 159, 1),
+                          borderRadius: BorderRadius.only(topRight: Radius.circular(100), bottomRight: Radius.circular(100)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.25),
+                              spreadRadius: 5,
+                              blurRadius: 7,
+                              offset: Offset(2, 3),
                             ),
                           ],
                         ),
-                      ),
-                      if (dishes.length > 0) Container(
-                        padding: EdgeInsets.only(left: 20),
-                        child: Container(
-                          width: double.infinity,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                        child: Center(
+                          child: Row(
                             children: [
-                              SizedBox(height: 5,),
+                              SizedBox(width: 4,),
+                              Icon(
+                                Icons.star,
+                                color: Colors.yellow,
+                                size: 18,
+                              ),
+                              SizedBox(width: 3,),
                               Text(
-                                "Dishes found",
+                                rating.toString(),
                                 style: TextStyle(
                                   fontFamily: "Urbanist",
                                   fontWeight: FontWeight.w700,
-                                  fontSize: 16
-                                ),
-                              ),
-                              SizedBox(height: 15,),
-                              SingleChildScrollView(
-                                clipBehavior: Clip.none,
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: [
-                                    ...dishes.asMap().entries.map((entry) => dishesItem(entry.value["img"], entry.value["name"], entry.value["price"], entry.value["discount"])).toList()
-                                  ],
+                                  color: Colors.white,
+                                  fontSize: 14
                                 ),
                               )
                             ],
                           ),
                         ),
-                      ),
-                      SizedBox(height: 25,)
+                      )
                     ],
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: Container(
+                    child: Column(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          height: 110,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      _overflowText(name, namelimit),
+                                      style: TextStyle(
+                                        fontFamily: "Urbanist",
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 21
+                                      ),
+                                    ),
+                                  ),
+                                  Container(
+                                    width: 50,
+                                    child: Center(
+                                      child: Text(
+                                        "${distance} km",
+                                        style: TextStyle(
+                                          fontFamily: "Urbanist",
+                                          fontSize: 13
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                ],
+                              ),
+                              Text(
+                                _overflowText(category.join(", "), categorylimit),
+                                style: TextStyle(
+                                  fontFamily: "Urbanist",
+                                  fontSize: 13
+                                ),
+                              ),
+                              SizedBox(height: 5,),
+                              Row(
+                                children: List.generate(150~/3, (index) => Expanded(
+                                    child: Container(
+                                      color: index%2==0?Colors.black38
+                                      :Colors.transparent,
+                                      height: 1,
+                                    ),
+                                  )),
+                              ),
+                              SizedBox(height: 5,),
+                              if (discount != "") Row(
+                                children: [
+                                  Icon(
+                                    Icons.local_fire_department,
+                                    color: Colors.orange,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 5,),
+                                  Text(
+                                    discount,
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 2,),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.timer_sharp,
+                                    color: Colors.red,
+                                    size: 18,
+                                  ),
+                                  SizedBox(width: 5,),
+                                  Text(
+                                    "Delivery in ${distance.floor() * 10} - ${distance.floor() * 10 + 10} min",
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (dishes.length > 0) Container(
+                          padding: EdgeInsets.only(left: 20),
+                          child: Container(
+                            width: double.infinity,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(height: 5,),
+                                Text(
+                                  "Dishes found",
+                                  style: TextStyle(
+                                    fontFamily: "Urbanist",
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16
+                                  ),
+                                ),
+                                SizedBox(height: 15,),
+                                SingleChildScrollView(
+                                  clipBehavior: Clip.none,
+                                  scrollDirection: Axis.horizontal,
+                                  child: Row(
+                                    children: [
+                                      ...dishes.asMap().entries.map((entry) => dishesItem(entry.value["img"], entry.value["name"], entry.value["price"], entry.value["discount"])).toList()
+                                    ],
+                                  ),
+                                )
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(height: 25,)
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
-        );
+    );
   }
 
 
@@ -473,7 +506,7 @@ class _ResultsPageState extends State<ResultsPage> {
             ),
             SizedBox(height: 25,),
             if(restaurantItems.length > 0) ...restaurantItems.asMap().entries.map((entry){
-              return restaurantBox(entry.value["name"], entry.value["img"], entry.value["distance"], entry.value["category"], entry.value["discount"], entry.value["rating"], entry.value["foods"]);
+              return restaurantBox(entry.value["id"], entry.value["name"], entry.value["img"], entry.value["distance"], entry.value["category"], entry.value["discount"], entry.value["rating"], entry.value["foods"]);
             }).toList()
             else Container(
               padding: EdgeInsets.symmetric(horizontal: 20),
