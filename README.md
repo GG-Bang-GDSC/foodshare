@@ -1,6 +1,6 @@
 # Foodshare
 
-A new Flutter project.
+Introducing FoodShare, an app connecting restaurants with surplus food to users through affordable packages. Addressing food waste, the platform offers an eco-friendly and budget-friendly way for users to explore diverse cuisines. Join us in revolutionizing dining and promoting sustainability with FoodShare.
 
 ## Getting Started
 
