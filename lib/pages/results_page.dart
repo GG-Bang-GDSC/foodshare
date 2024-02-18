@@ -3,7 +3,10 @@
 import 'package:flutter/material.dart';
 //import 'package:foodshare/data/firebase.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:foodshare/data/controller/food_controller.dart';
+import 'package:foodshare/data/model/food_model.dart';
 import 'package:foodshare/data/firebase.dart';
+import 'package:intl/intl.dart';
 
 class ResultsPage extends StatefulWidget {
   final String data;
@@ -17,87 +20,22 @@ class ResultsPage extends StatefulWidget {
 
 class _ResultsPageState extends State<ResultsPage> {
   // Variables
-  FirebaseService fdb = FirebaseService();
+ // FirebaseService fdb = FirebaseService();
   List sortValue = ["Top result", "Near me", "Rated 4.5+", "Populer"];
   int _selectedSort = 0;
-  List initRestaurantItems = [];
-  List restaurantItems = [];
-
+  FoodController foodController = FoodController();
 
   // Actions
-  void searchData(String keyword){
-    int foodCount = fdb.foodItems.length;
-    List foodResults = List.generate(fdb.restaurantItems.length, (index) => []);
-    List restaurants = [];
-    
-    for(int i=0; i<foodCount;i++){
-      String foodName = fdb.foodItems[i]["name"];
-      foodName = foodName.toLowerCase();
+  String formatNumberWithDots(int number) {
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return formatter.format(number);
+  }
 
-      if(foodName.contains(keyword.toLowerCase())){
-        int restaurantIndex = fdb.foodItems[i]["restaurantId"];
-        foodResults[restaurantIndex - 1].add(fdb.foodItems[i]);
-      }
-    }
-    Map findItemById(int id, List myListOfMaps) {
-      for(int i =0; i<myListOfMaps.length; i++){
-        Map item = myListOfMaps[i] as Map;
-        if(item["id"] == id){
-          return item;
-        } 
-      }
-      return  {};
-    }
-    for(int j=0; j < foodResults.length; j++){
-      if(foodResults[j].length > 0){
-        Map restaurantObj = findItemById(j+1, fdb.restaurantItems);
-        restaurantObj["foods"] = foodResults[j];
-        restaurants.add(restaurantObj);
-      }
-    }
-
-    setState(() {
-      restaurantItems = restaurants;
-      initRestaurantItems = [restaurants];
-    });
-  }
-  void loadData() async {
-    await fdb.fetchData();
-    setState(() {
-      searchData(widget.data);
-    });
-  }
-  void sortRestaurant(int tipe){
-    if(tipe == 1){
-      setState(() {
-        restaurantItems = List.from(initRestaurantItems[0])..sort((a, b) => a['distance'].compareTo(b['distance']));;
-      });
-    } else if (tipe == 2){
-      setState(() {
-        restaurantItems = initRestaurantItems[0];
-        restaurantItems = restaurantItems.where((item) => item['rating'] >= 4.5).toList();
-      });
-    } else {
-      setState(() {
-        restaurantItems = initRestaurantItems[0];
-        print(initRestaurantItems);
-      });
-    }
-  }
-  List restaurantFoods(id){
-    List foods = [];
-    for(int i = 0; i<fdb.foodItems.length;i++){
-      if(fdb.foodItems[i]["restaurantId"] == id){
-        foods.add(fdb.foodItems[i]);
-      }
-    }
-    return foods;
-  }
   void changeSort(int index){
     setState(() {
       _selectedSort = index;
 
-      sortRestaurant(index);
+      // sortRestaurant(index);
     });
   }
   void checkDishes(int id, String name, String restaurantImg, num distance, List category, String discount, double rating){
@@ -109,17 +47,10 @@ class _ResultsPageState extends State<ResultsPage> {
       "category": category,
       "discount": discount,
       "rating": rating,
-      "foods": restaurantFoods(id)
+      // "foods": restaurantFoods(id)
     }; 
     print(_restaurantData);
     Navigator.pushNamed(context, "/restaurantpage", arguments: _restaurantData);
-  }
-
-
-  @override
-  void initState(){
-    super.initState();
-    loadData();
   }
 
   // Widgets
@@ -128,7 +59,7 @@ class _ResultsPageState extends State<ResultsPage> {
     Color textColor = index == _selectedSort ? Colors.white : Colors.black;
 
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 15, vertical: 4),
       margin: EdgeInsets.only(right: 15),
       decoration: BoxDecoration(
         color: bgColor,
@@ -139,7 +70,7 @@ class _ResultsPageState extends State<ResultsPage> {
         style: TextStyle(
           color: textColor,
           fontFamily: "Urbanist",
-          fontSize: 16,
+          fontSize: 14,
         ),
       ),
     );
@@ -193,7 +124,7 @@ class _ResultsPageState extends State<ResultsPage> {
                       if(discount > 0) Container(
                         margin: EdgeInsets.only(right: 5),
                         child: Text(
-                          price.toString(),
+                          formatNumberWithDots(price),
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             fontSize: 10,
@@ -202,7 +133,7 @@ class _ResultsPageState extends State<ResultsPage> {
                         ),
                       ),
                       Text(
-                        "${(price - (price * discount)).round()}",
+                        formatNumberWithDots((price - (price * discount)).floor()),
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontWeight: FontWeight.w700,
@@ -247,6 +178,7 @@ class _ResultsPageState extends State<ResultsPage> {
     }
     int namelimit = 16;
     int categorylimit = 35;
+    //dishes = dishes[0];
 
     return GestureDetector(
       onTap: () => checkDishes(id, name, restaurantImg, distance, category, discount, rating),
@@ -429,7 +361,7 @@ class _ResultsPageState extends State<ResultsPage> {
                                   scrollDirection: Axis.horizontal,
                                   child: Row(
                                     children: [
-                                      ...dishes.asMap().entries.map((entry) => dishesItem(entry.value["img"], entry.value["name"], entry.value["price"], entry.value["discount"])).toList()
+                                      ...dishes.map((e) => dishesItem(e.img, e.name, e.price, e.discount))
                                     ],
                                   ),
                                 )
@@ -505,43 +437,55 @@ class _ResultsPageState extends State<ResultsPage> {
               ),
             ),
             SizedBox(height: 25,),
-            if(restaurantItems.length > 0) ...restaurantItems.asMap().entries.map((entry){
-              return restaurantBox(entry.value["id"], entry.value["name"], entry.value["img"], entry.value["distance"], entry.value["category"], entry.value["discount"], entry.value["rating"], entry.value["foods"]);
-            }).toList()
-            else Container(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.manage_search,
-                        size: 26,
-                      ),
-                      SizedBox(width: 8,),
-                      Text(
-                        "No results found for \"${widget.data}\"",
-                        style: TextStyle(
-                          fontFamily: "Urbanist",
-                          fontWeight: FontWeight.w700,
-                          fontSize: 18
-                        ),
-                      ),
-                    ],
-                    
+            Container(
+                child: FutureBuilder<List>(
+                    future: foodController.searchFoods(widget.data, _selectedSort),
+                    builder: (context, snapshot){
+                      if(snapshot.hasData && snapshot.data!.length > 0){
+                        return Column(
+                          children: snapshot.data!.map((item){
+                            return restaurantBox(item["id"], item["name"], item["img"], item["distance"], item["category"], item["discount"], item["rating"], item["foods"]);
+                          }).toList(),
+                        );
+                      } else {
+                        return Container(
+                          padding: EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.manage_search,
+                                    size: 26,
+                                  ),
+                                  SizedBox(width: 8,),
+                                  Text(
+                                    "No results found for \"${widget.data}\"",
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 18
+                                    ),
+                                  ),
+                                ],
+                                
+                              ),
+                              SizedBox(width: 8,),
+                                  Text(
+                                    "We couldn't find any food related to \"${widget.data}\". Maybe check your spelling or try to search another food!",
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 15
+                                    ),
+                                  ),
+                            ],
+                          ),
+                        );
+                      }
+                    }
                   ),
-                  SizedBox(width: 8,),
-                      Text(
-                        "We couldn't find any food related to \"${widget.data}\". Maybe check your spelling or try to search another food!",
-                        style: TextStyle(
-                          fontFamily: "Urbanist",
-                          fontSize: 15
-                        ),
-                      ),
-                ],
               ),
-            )
           ],
         ),
     );

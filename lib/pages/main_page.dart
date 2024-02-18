@@ -4,6 +4,7 @@ import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:foodshare/pages/community_page.dart';
+import 'package:foodshare/pages/happyhour_page.dart';
 import 'package:foodshare/pages/home_page.dart';
 import 'package:foodshare/pages/profile_page.dart';
 import 'package:foodshare/pages/search_page.dart';
@@ -22,7 +23,7 @@ class _MainPageState extends State<MainPage> {
   // Variables
   List screens = [
     HomePage(),
-    ShoppingPage(),
+    HappyHourPage(),
     CommunityPage(),
     ProfilePage()
   ];

@@ -2,6 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:foodshare/data/controller/auth_controller.dart';
+import 'package:foodshare/data/local_database.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
 
 class SigninPage extends StatefulWidget {
   SigninPage({super.key});
@@ -11,10 +14,21 @@ class SigninPage extends StatefulWidget {
 }
 
 class _SigninPageState extends State<SigninPage> {
+
   // Variables
+  LocalDatabase db = LocalDatabase();
   TextEditingController _emailaddress = TextEditingController();
   TextEditingController _password = TextEditingController();
-
+  bool _passwordVisible = false;
+  bool loading = false;
+  AuthController authController = AuthController();
+  List dataError = [
+    "none",
+    {
+      "email": false,
+      "password": false,
+    }
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -82,12 +96,13 @@ class _SigninPageState extends State<SigninPage> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(100),
                             border: Border.all(
-                              color: Color.fromRGBO(59, 0, 125,1),
+                              color: Color.fromRGBO(43, 192, 159, 1),
                               width: 1.0,
                             ),
                           ),
                           child: TextField(
                             controller: _emailaddress,
+                            keyboardType: TextInputType.emailAddress,
                             style: TextStyle(
                               fontFamily: "Urbanist"
                             ),
@@ -97,15 +112,28 @@ class _SigninPageState extends State<SigninPage> {
                               hintText: "Enter your email..."
                             ),
                           ),
-                        )
+                        ),
+                        if(dataError[1]["email"]) Container(
+                          margin: EdgeInsets.only(top: 5),
+                          child: Text(
+                            dataError[0] == "null" ? "Email can't be empty!" : "Email not valid!",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontFamily: "Urbanist",
+                              //fontWeight: FontWeight.w700,
+                              fontSize: 13
+                            ),
+                          ),
+                        ) 
+                        else SizedBox(height: 12,)
                       ],
                     ),
-                    SizedBox(height: 20,),
+                    SizedBox(height: 8,),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Password Confirmation",
+                          "Password",
                           style: TextStyle(
                             color: Colors.black,
                             fontFamily: "Urbanist",
@@ -120,25 +148,55 @@ class _SigninPageState extends State<SigninPage> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(100),
                             border: Border.all(
-                              color: Color.fromRGBO(59, 0, 125,1),
+                              color: Color.fromRGBO(43, 192, 159, 1),
                               width: 1.0,
                             ),
                           ),
                           child: TextField(
                             controller: _password,
+                            obscureText: !_passwordVisible,
                             style: TextStyle(
                               fontFamily: "Urbanist"
                             ),
                             decoration: InputDecoration(
                               border: InputBorder.none,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 30),
-                              hintText: "Confirm your password..."
+                              contentPadding: EdgeInsets.symmetric(horizontal: 30, vertical: 13),
+                              hintText: "Enter your password...",
+                              suffixIcon: Container(
+                                padding: EdgeInsets.only(right: 10),
+                                child: IconButton(
+                                  icon: Icon(
+                                    _passwordVisible
+                                    ? Icons.visibility
+                                    : Icons.visibility_off,
+                                    color: Color.fromRGBO(0, 0, 0, 0.4),
+                                    ),
+                                  onPressed: () {
+                                    setState(() {
+                                        _passwordVisible = !_passwordVisible;
+                                    });
+                                  },
+                                  ),
+                              ),
                             ),
                           ),
-                        )
+                        ),
+                        if(dataError[1]["password"]) Container(
+                          margin: EdgeInsets.only(top: 5),
+                          child: Text(
+                            dataError[0] == "null" ? "Password can't be empty!" : "Password not valid!",
+                            style: TextStyle(
+                              color: Colors.red,
+                              fontFamily: "Urbanist",
+                              //fontWeight: FontWeight.w700,
+                              fontSize: 13
+                            ),
+                          ),
+                        ) 
+                        else SizedBox(height: 12,)
                       ],
                     ),
-                    SizedBox(height: 15,),
+                    SizedBox(height: 3,),
                     Container(
                       width: double.infinity,
                       child: Column(
@@ -161,13 +219,98 @@ class _SigninPageState extends State<SigninPage> {
                     ),
                     SizedBox(height: 20,),
                     ElevatedButton(
-                      onPressed: toSearchPage,
+                      onPressed: () async {
+                        setState(() {
+                          loading = true;
+                          dataError = [
+                              "none",
+                              {
+                                "email": false,
+                                "password": false,
+                              }
+                            ];
+                        });
+                        Map requestData = {
+                          "email": _emailaddress.text,
+                          "password": _password.text,
+                        };
+                        try {
+                          var data = await authController.signInWithEmail(requestData);
+                          setState(() {
+                            loading = false;
+                          });
+                          if(data["message"] == "success"){
+                            Navigator.pushNamed(context, "/mainpage");
+                          } else if(data.containsKey("error")){
+                            // ignore: use_build_context_synchronously
+                            showDialog(
+                              context: context,
+                              builder: (context){
+                                  return AlertDialog(
+                                      backgroundColor: Colors.white,
+                                      surfaceTintColor: Colors.white,
+                                      title: Text(
+                                        "Sign In Failed",
+                                        style: TextStyle(
+                                          fontFamily: "Urbanist",
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.w700
+                                        ),
+                                      ),
+                                      content: Text(
+                                        data["error"].message == "The supplied auth credential is incorrect, malformed or has expired." ? "Your email or password is incorrect. Please try again." : data["error"].message,
+                                        style: TextStyle(
+                                          fontFamily: "Urbanist",
+                                          fontSize: 15
+                                        ),
+                                      ),
+                                      actions: [
+                                        GestureDetector(
+                                          onTap: (){
+                                            Navigator.of(context).pop();
+                                          },
+                                          child: Container(
+                                            width: double.infinity,
+                                            padding: EdgeInsets.symmetric(vertical: 10),
+                                            decoration: BoxDecoration(
+                                              border: Border.all(color: Color.fromRGBO(43, 192, 159, 1), width: 1),
+                                              borderRadius: BorderRadius.circular(100)
+                                            ),
+                                            child: Text(
+                                              "Okay",
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                fontFamily: "Urbanist",
+                                                fontSize: 15,
+                                                color: Color.fromRGBO(43, 192, 159, 1),
+                                                fontWeight: FontWeight.w700
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                              }
+                            );
+                            print("error : " +data["error"].message);
+                          } else {
+                            setState(() {
+                              dataError = data["data"];
+                            });
+                          }
+                        } catch(e){
+                          print(e);
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Color.fromRGBO(43, 192, 159, 1),
                         elevation: 0,
                         minimumSize: const Size.fromHeight(55),
                       ), 
-                      child: Text(
+                      child: loading == true ? LoadingAnimationWidget.waveDots(
+                          color: Colors.white,
+                          size: 25,
+                        ) : Text(
                         "Sign In",
                         style: TextStyle(
                           color: Colors.white,
@@ -208,19 +351,31 @@ class _SigninPageState extends State<SigninPage> {
                           ),
                         ),
                         SizedBox(width: 15,),
-                        Container(
-                          width: 50,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            border: Border.all(
-                              color: Color.fromRGBO(43, 192, 159, 1),
-                              width: 2.0
+                        GestureDetector(
+                          onTap: () async {
+                            var signIn = await authController.signInWithGoogle();
+                            if(signIn.containsKey("error")){
+                              print(signIn["error"]);
+                            } else {
+                              if(signIn["message"] == "success"){
+                                Navigator.pushNamed(context, "/mainpage");
+                              }
+                            }
+                          },
+                          child: Container(
+                            width: 50,
+                            height: 50,
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Color.fromRGBO(43, 192, 159, 1),
+                                width: 2.0
+                              ),
+                              borderRadius: BorderRadius.circular(100)
                             ),
-                            borderRadius: BorderRadius.circular(100)
-                          ),
-                          child: SvgPicture.asset(
-                            "assets/google_logo.svg",
-                            fit: BoxFit.scaleDown
+                            child: SvgPicture.asset(
+                              "assets/google_logo.svg",
+                              fit: BoxFit.scaleDown
+                            ),
                           ),
                         ),
                         SizedBox(width: 15,),

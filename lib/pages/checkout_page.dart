@@ -1,7 +1,18 @@
 // ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:foodshare/data/controller/auth_controller.dart';
+import 'package:foodshare/data/controller/restaurant_controller.dart';
+import 'package:foodshare/data/local_database.dart';
+import 'package:foodshare/data/model/food_model.dart';
+import 'package:foodshare/pages/restaurant_page.dart';
+import 'package:hive/hive.dart';
+import 'package:intl/intl.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
 
 class CheckoutPage extends StatefulWidget {
   final Map data;
@@ -13,15 +24,36 @@ class CheckoutPage extends StatefulWidget {
 }
 
 class _CheckoutPageState extends State<CheckoutPage> {
+  // Init action
+  @override
+  void initState(){
+    if(_myBox.get("cart_items") == null){
+      db.createInitialData();
+      db.updateDatabase();
+    } else{
+      db.loadData();
+    }
+
+    super.initState();
+  }
   // Variables
+  FirebaseAuth _auth = FirebaseAuth.instance;
+  AuthController authController = AuthController();
+  RestaurantController restaurantController = RestaurantController();
+  final _myBox = Hive.box("myBox");
+  LocalDatabase db = LocalDatabase();
   int namelimit = 16;
   int categorylimit = 35;
-  int items = 1;
   String deliveryValue = "self_pickup";
   Map deliveryName = {
     "self_pickup": "Self Pickup",
     "regular": "Regular Delivery",
     "priority": "Priority Delivery",
+  };
+  Map deliveryPrice = {
+    "self_pickup": 0,
+    "regular": 8000,
+    "priority": 12000,
   };
   String paymentValue = "qris";
   Map paymentName = {
@@ -29,11 +61,38 @@ class _CheckoutPageState extends State<CheckoutPage> {
     "card": "Credit/Debit Card",
     "cod": "Cash on Delivery",
   };
-  String voucherValue = "uid123";
-  Map voucherName = {
-    "uid123": "Free Delivery up to 8k",
-    "uid456": "Free Delivery up to 8k",
+  Map selectedVoucher = {
+    "id": "uid123",
+    "name": "Free Delivery up to 8k",
+    "type": "value",
+    "voucher_type": "delivery",
+    "description": "Minimum purchase 30k",
+    "discount": 8000,
+    "minimum_purchase": 30000
   };
+  List voucherList = [
+    {
+      "id": "uid123",
+      "name": "Free Delivery up to 8k",
+      "type": "value",
+      "voucher_type": "delivery",
+      "description": "Minimum purchase 30k",
+      "discount": 8000,
+      "minimum_purchase": 30000
+    },
+      {
+      "id": "uid456",
+      "name": "Free Delivery up to 12k",
+      "type": "value",
+      "voucher_type": "delivery",
+      "description": "Minimum purchase 30k",
+      "discount": 12000,
+      "minimum_purchase": 20000
+    }
+  ];
+  int discount = 0;
+  bool loading = false;
+  TextEditingController _note = TextEditingController();
 
   // Actions
   String _overflowText(String text, int limit){
@@ -42,21 +101,100 @@ class _CheckoutPageState extends State<CheckoutPage> {
       } else {
         return text;
       }
-    }
-  void increaseItem(){
-    setState(() {
-      items++;
-    });
   }
-  void decreaseItem(){
-    if(items > 1){
+  Map discountFunction(String type, int price, {int percentage = 0, int value = 0, int max=0}){
+    Map result = {};
+    if(type == "percentage"){
+      result["discount"] = price * percentage;
+      if((max != 0) && (result["discount"] > max)){
+        result["discount"] = max;
+      }
+      result["discountPrice"] = price - result["discont"];
+    }
+    if(type == "fixed"){
+      result["discount"] = value;
+      result["discountPrice"] = price - result["discont"];
+    }
+    return result;
+  }
+  void addDishes(BuildContext context, Map food){
+    if(!db.cartItems.containsKey(widget.data["id"])){
       setState(() {
-      items--;
-    });
+        Map foodMap = food;
+        foodMap["quantity"] = 1;
+        db.cartItems[widget.data["id"]] = {foodMap["name"]: foodMap};
+        db.updateDatabase();
+      });
+    } else {
+      if(db.cartItems[widget.data["id"]].containsKey(food["name"])){
+        setState(() {
+          Map foodMap = db.cartItems[widget.data["id"]][food["name"]];
+          foodMap["quantity"] = foodMap["quantity"] + 1;
+          db.cartItems[widget.data["id"]][food["name"]] = foodMap;
+          db.updateDatabase();
+        });
+      } else {
+        setState(() {
+          Map foodMap = food;
+          foodMap["quantity"] = 1;
+          db.cartItems[widget.data["id"]][food["name"]] = foodMap;
+          db.updateDatabase();
+        });
+      }
+    }
+  }
+  void removeDishes(BuildContext context, Map food){
+    if(db.cartItems[widget.data["id"]].containsKey(food["name"])){
+      if(db.cartItems[widget.data["id"]][food["name"]]["quantity"] == 1){
+        if(db.cartItems[widget.data["id"]].length == 2){
+          db.cartItems[widget.data["id"]].remove(food["name"]);
+          db.cartItems.remove(widget.data["id"]);
+          db.updateDatabase();
+          Navigator.pop(context);
+        } else {
+          setState(() {
+          db.cartItems[widget.data["id"]].remove(food["name"]);
+          db.updateDatabase();
+        });
+        }
+      } else {
+        setState(() {
+          db.cartItems[widget.data["id"]][food["name"]]["quantity"] = db.cartItems[widget.data["id"]][food["name"]]["quantity"] - 1;
+          db.updateDatabase();
+        });
+      }
     }
   }
 
   // Actions
+  Map getOrderData(var id){
+    if(db.cartItems.containsKey(id)){
+      num realPrice = 0;
+      num discountPrice = 0;
+      num quantity = 0;
+      for(var entry in db.cartItems[id].entries){
+        var key = entry.key;
+        var value = entry.value;
+        if(key != "done"){
+          quantity += value["quantity"];
+          realPrice += value["price"] * value["quantity"];
+          num fixedPrice = (value["price"] - (value["price"] * value["discount"])) * value["quantity"];
+          discountPrice += fixedPrice; 
+        }
+      }
+      return {
+        "real_price": realPrice.floor(),
+        "discount_price": discountPrice.floor(),
+        "quantity": quantity.floor()
+      };
+    } else {
+      return {};
+    }
+  }
+  String formatNumberWithDots(int number) {
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return formatter.format(number);
+  }
   Future displayDelivery(BuildContext context){
     return showModalBottomSheet(
       context: context,
@@ -156,7 +294,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
                         Text(
-                          "Rp 0",
+                          "Rp "+formatNumberWithDots(deliveryPrice["self_pickup"]),
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             fontSize: 14,
@@ -217,7 +355,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
                         SizedBox(width: 13,),
                         Text(
-                          "Rp 8.000",
+                          "Rp "+formatNumberWithDots(deliveryPrice["regular"]),
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             fontSize: 14,
@@ -277,7 +415,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           ),
                         ),
                         Text(
-                          "Rp 12.000",
+                          "Rp "+formatNumberWithDots(deliveryPrice["priority"]),
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             fontSize: 14,
@@ -416,129 +554,9 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: voucherValue == "uid123" ? Color.fromRGBO(43, 192, 159, 1) : Color.fromRGBO(0, 0, 0, 0.15), width: 1
-                          ),
-                          borderRadius: BorderRadius.circular(10)
-                        ),
-                        child: RadioListTile(
-                          activeColor: Color.fromRGBO(43, 192, 159, 1),
-                          contentPadding: EdgeInsets.zero,
-                          title: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    SvgPicture.asset(
-                                      "assets/delivery_icon.svg"
-                                    ),
-                                    SizedBox(width: 10,),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          voucherName["uid123"],
-                                          style: TextStyle(
-                                            fontFamily: "Urbanist",
-                                            fontSize: 12,
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w700
-                                          ),
-                                        ),
-                                        Text(
-                                          "Minimum purchase 30k",
-                                          style: TextStyle(
-                                            fontFamily: "Urbanist",
-                                            fontSize: 11,
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    
-                                  ],
-                                ),
-                              ),
-                              
-                            ],
-                          ),
-                          value: 'uid123',
-                          groupValue: voucherValue,
-                          onChanged: (value) {
-                            setState(() {
-                              voucherValue = value!;
-                            });
-                            Navigator.pop(context);
-                          },
-                        ),
-                      ),
-                      SizedBox(height: 15,),
-                      Container(
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color:  voucherValue == "uid456" ? Color.fromRGBO(43, 192, 159, 1) : Color.fromRGBO(0, 0, 0, 0.15), width: 1
-                          ),
-                          borderRadius: BorderRadius.circular(10)
-                        ),
-                        child: RadioListTile(
-                          activeColor: Color.fromRGBO(43, 192, 159, 1),
-                          contentPadding: EdgeInsets.zero,
-                          title: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.start,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    SvgPicture.asset(
-                                      "assets/delivery_icon.svg"
-                                    ),
-                                    SizedBox(width: 10,),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          voucherName["uid456"],
-                                          style: TextStyle(
-                                            fontFamily: "Urbanist",
-                                            fontSize: 12,
-                                            color: Colors.black,
-                                            fontWeight: FontWeight.w700
-                                          ),
-                                        ),
-                                        Text(
-                                          "Minimum purchase 30k",
-                                          style: TextStyle(
-                                            fontFamily: "Urbanist",
-                                            fontSize: 11,
-                                            color: Colors.black,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    
-                                  ],
-                                ),
-                              ),
-                             
-                            ],
-                          ),
-                          value: 'uid456',
-                          groupValue: voucherValue,
-                          onChanged: (value) {
-                            setState(() {
-                              voucherValue = value!;
-                            });
-                            Navigator.pop(context);
-                          },
-                        ),
-                      ),
+                      if(voucherList.length > 0) ...voucherList.asMap().entries.map((entry){
+                        return discountItem(entry.value);
+                      }), 
                   
                       SizedBox(height: 20),
                     ],
@@ -551,7 +569,19 @@ class _CheckoutPageState extends State<CheckoutPage> {
       )
     );
   }
-
+  int totalCheckout(String type, Map checkoutData){
+    if(type == "subtotal"){
+      return checkoutData["discount_price"] + deliveryPrice[deliveryValue];
+    } else if(type == "total"){
+      if(selectedVoucher != {}){
+        return checkoutData["discount_price"] + deliveryPrice[deliveryValue] - selectedVoucher["discount"];
+      } else {
+        return checkoutData["discount_price"] + deliveryPrice[deliveryValue];
+      }
+    } else {
+      return checkoutData["discount_price"] + deliveryPrice[deliveryValue];
+    }
+  }
 
 
   Future displayPayment(BuildContext context){
@@ -751,10 +781,80 @@ class _CheckoutPageState extends State<CheckoutPage> {
       )
     );
   }
-
+  String discountIcon(String type){
+    if(type == "delivery"){
+      return "assets/delivery_icon.svg";
+    } else {
+      return "";
+    }
+  }
 
   // Widgets
-  Widget orderedItem(){
+  Widget discountItem(Map discount){
+    return Container(
+      margin: EdgeInsets.only(bottom: 15),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: selectedVoucher["id"] == discount["id"] ? Color.fromRGBO(43, 192, 159, 1) : Color.fromRGBO(0, 0, 0, 0.15), width: 1
+            ),
+            borderRadius: BorderRadius.circular(10)
+          ),
+          child: RadioListTile(
+            activeColor: Color.fromRGBO(43, 192, 159, 1),
+            contentPadding: EdgeInsets.zero,
+            title: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        discountIcon(discount["voucher_type"])
+                      ),
+                      SizedBox(width: 10,),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            discount["name"],
+                            style: TextStyle(
+                              fontFamily: "Urbanist",
+                              fontSize: 12,
+                              color: Colors.black,
+                              fontWeight: FontWeight.w700
+                            ),
+                          ),
+                          Text(
+                            discount["description"],
+                            style: TextStyle(
+                              fontFamily: "Urbanist",
+                              fontSize: 11,
+                              color: Colors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                      
+                    ],
+                  ),
+                ),
+                
+              ],
+            ),
+            value: discount,
+            groupValue: selectedVoucher,
+            onChanged: (value) {
+              setState(() {
+                selectedVoucher = value!;
+              });
+              Navigator.pop(context);
+            },
+          ),
+        );
+  }
+  Widget orderedItem(Map food){
     return Column(
       children: [
         Row(
@@ -771,7 +871,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
-                        widget.data["name"],
+                        food["name"],
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontWeight: FontWeight.w700,
@@ -791,7 +891,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             GestureDetector(
-                              onTap: decreaseItem,
+                              onTap: () => removeDishes(context, food),
                               child: Container(
                                 padding: EdgeInsets.only(left: 12),
                                 child: Text(
@@ -808,7 +908,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                             Container(
                               padding: EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                               child: Text(
-                                items.toString(),
+                                food["quantity"].toString(),
                                 style: TextStyle(
                                   fontFamily: "Urbanist",
                                   color: Colors.white,
@@ -818,7 +918,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                               ),
                             ),
                             GestureDetector(
-                              onTap: increaseItem,
+                              onTap: () => addDishes(context, food),
                               child: Container(
                                 padding: EdgeInsets.only(right: 12),
                                 child: Text(
@@ -848,7 +948,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       width: 90,
                       decoration: BoxDecoration(
                         image: DecorationImage(
-                          image: NetworkImage(widget.data["img"]),
+                          image: NetworkImage(food["img"]),
                           fit: BoxFit.cover
                         ),
                         borderRadius: BorderRadius.circular(11)
@@ -859,8 +959,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       mainAxisAlignment: MainAxisAlignment.end,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        if(widget.data["discount"] > 0) Text(
-                          "Rp ${widget.data["price"]}",
+                        if(food["discount"] > 0) Text(
+                          "Rp ${formatNumberWithDots(food["price"] * food["quantity"])}",
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             color: Colors.black,
@@ -873,7 +973,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
                         SizedBox(width: 10,),
                         Text(
-                          "Rp ${(widget.data["price"] - (widget.data["price"] * widget.data["discount"])).round()}",
+                          "Rp ${formatNumberWithDots(((food["price"] - (food["price"] * food["discount"])) * food["quantity"]).floor())}",
                           style: TextStyle(
                             fontFamily: "Urbanist",
                             color: Color.fromRGBO(43, 192, 159, 1),
@@ -903,8 +1003,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
   Widget offerDishes(screenWidth){
     return Container(
       margin: EdgeInsets.only(right: 20),
-      padding: EdgeInsets.only(left: 15, right: 0, top: 0, bottom: 12),
-      width: screenWidth - 60,
+      padding: EdgeInsets.only(left: 15, right: 0, top: 0, bottom: 10),
+      width: screenWidth - 80,
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(10),
@@ -942,7 +1042,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         color: Colors.black,
                         fontWeight: FontWeight.w700,
                         fontFamily: "Urbanist",
-                        fontSize: 16
+                        fontSize: 15
                       ),
                     ),
                     Row(
@@ -1011,7 +1111,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
       ),
     );
   }
-  Widget paymentDetails(){
+  Widget paymentDetails(int productSubtotal){
     return Container(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Column(
@@ -1039,7 +1139,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     Text(
-                      "Rp 30.000",
+                      "Rp"+formatNumberWithDots(productSubtotal),
                       style: TextStyle(
                         fontFamily: "Urbanist",
                         color: Color.fromRGBO(0, 0, 0, 0.5),
@@ -1061,7 +1161,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     Text(
-                      "Rp 8.000",
+                      "Rp "+formatNumberWithDots(deliveryPrice[deliveryValue]),
                       style: TextStyle(
                         fontFamily: "Urbanist",
                         color: Color.fromRGBO(0, 0, 0, 0.5),
@@ -1071,11 +1171,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ],
                 ),
                 SizedBox(height: 4,),
-                Row(
+                if(selectedVoucher != {}) Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
-                      "Shipping Discount Total",
+                      "Discount Total",
                       style: TextStyle(
                         fontFamily: "Urbanist",
                         color: Color.fromRGBO(0, 0, 0, 0.5),
@@ -1083,7 +1183,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     Text(
-                      "-Rp 8.000",
+                      "-Rp "+formatNumberWithDots(selectedVoucher["discount"]),
                       style: TextStyle(
                         fontFamily: "Urbanist",
                        color: Color.fromRGBO(0, 0, 0, 0.5),
@@ -1106,7 +1206,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                       ),
                     ),
                     Text(
-                      "Rp 30.000",
+                      "Rp "+formatNumberWithDots(totalCheckout("total", {"discount_price": productSubtotal})),
                       style: TextStyle(
                         fontFamily: "Urbanist",
                         color: Color.fromRGBO(43, 192, 159, 1),
@@ -1154,7 +1254,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 Row(
                 children: [
                   Text(
-                    "Rp 8.000",
+                    "Rp "+formatNumberWithDots(deliveryPrice[deliveryValue]),
                     style: TextStyle(
                         fontFamily: 'Urbanist',
                         color: Color.fromRGBO(43, 192, 159, 1),
@@ -1197,7 +1297,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                   SizedBox(width: 10,),
                   Text(
-                    voucherName[voucherValue],
+                    selectedVoucher["name"],
                     style: TextStyle(
                         fontFamily: 'Urbanist',
                         color: Colors.black,
@@ -1272,11 +1372,136 @@ class _CheckoutPageState extends State<CheckoutPage> {
         ),
     );
   }
+  Widget deliveryAddress(){
+    return GestureDetector(
+      onTap: (){
+        Navigator.pushNamed(context, "/locationpage");
+      },
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          border: Border.all(color: Color.fromRGBO(0, 0, 0, 0.1), width: 1),
+          borderRadius: BorderRadius.circular(10)
+        ),
+        child: Row(
+         crossAxisAlignment: CrossAxisAlignment.center,
+         children: [
+            Expanded(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.location_on_outlined,
+                    color: Color.fromRGBO(43, 192, 159, 1),
+                    size: 30,
+                  ),
+                  Expanded(
+                    child: FutureBuilder(
+                      future: authController.getUserData(_auth.currentUser!.uid),
+                      builder: (context, snapshot){
+                        if(snapshot.hasData){
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Delivery Address",
+                                style: TextStyle(
+                                  fontFamily: "Urbanist",
+                                  fontSize: 14,
+                                  color: Colors.black,
+                                  fontWeight: FontWeight.w700
+                                ),
+                              ),
+                              SizedBox(height: 2,),
+                              Row(
+                                children: [
+                                  Text(
+                                    snapshot.data!.fullName,
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 12,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  SizedBox(width: 10,),
+                                  Text(
+                                    "|",
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 12,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                  SizedBox(width: 10,),
+                                  Text(
+                                    snapshot.data!.phoneNumber,
+                                    style: TextStyle(
+                                      fontFamily: "Urbanist",
+                                      fontSize: 12,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 2,),
+                              FutureBuilder(
+                                future: ((db.locations["current_location"] == []) || (db.locations["current_location"] == null)) ? placemarkFromCoordinates(48.8561, 2.2930) : placemarkFromCoordinates(db.locations["current_location"][0], db.locations["current_location"][1]),
+                                builder: (context, snapshot){
+                                  if(snapshot.hasData){
+                                    List<Placemark> placemarks = snapshot.data!;
+                                    var placemark = placemarks[0];
 
+                                    return Text(
+                                      "${placemark.street}, ${placemark.locality}, ${placemark.administrativeArea}, ${placemark.country}",
+                                      style: TextStyle(
+                                        fontFamily: "Urbanist",
+                                        fontSize: 12,
+                                        color: Colors.black,
+                                      ),
+                                    );
+                                  } else {
+                                    print(snapshot.error);
+                                    return Container(height: 0,);
+                                  }
+                                },
+                              )
+                            ],
+                          );
+                        } else {
+                            return Container(height: 0);
+                          }
+                      } 
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Transform.rotate(
+                    angle: 180 * 3.14159265359 / 180,
+                    child: Icon(
+                      Icons.arrow_back_ios,
+                      size: 15,
+                      color: Color.fromRGBO(0, 0, 0, 0.6)
+                    ),
+                  ),
+              ],
+            ),
+            SizedBox(width: 5,)
+         ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     double screenWidth = MediaQuery.of(context).size.width;
+    Map checkoutData = getOrderData(widget.data["id"]);
 
     return Scaffold(
       backgroundColor: Color.fromRGBO(248, 248, 248, 1),
@@ -1304,7 +1529,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   ),
                 ),
                 Text(
-                  "Rp 30.000",
+                  "Rp "+formatNumberWithDots(totalCheckout("total", checkoutData)),
                   style: TextStyle(
                     color: Color.fromRGBO(43, 192, 159, 1),
                     fontSize: 20, 
@@ -1315,8 +1540,51 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ],
             ),
             ElevatedButton(
-              onPressed: (){
-                Navigator.pushNamed(context, "/waitingpage");
+              onPressed: () async {
+                setState(() {
+                  loading = false;
+                });
+                var userData = await authController.getUserData(_auth.currentUser!.uid);
+                var restaurantId = await restaurantController.getRestaurantID(widget.data["id"]);
+                String? userName = userData!.fullName;
+                Map orderData = {
+                  "note": _note.text,
+                  "restaurantId": restaurantId,
+                  "date": DateTime.now(),
+                  "driver": "asep gemoy",
+                  "driverId": "ajdasjbdsaj2b13r831br",
+                  "location": [12122, -231231],
+                  "menu": [],
+                  "name": userName,
+                  "payment": paymentValue,
+                  "shipFee": deliveryPrice[deliveryValue],
+                  "status": "Belum Konfirmasi",
+                  "promoDiscount": selectedVoucher["discount"],
+                  "userId": _auth.currentUser!.uid
+                };
+                List foods = [];
+                for(var entry in db.cartItems[widget.data["id"]].entries){
+                  var key = entry.key;
+                  var value = entry.value;
+                  if(key != "done"){
+                    value["note"] = "";
+                    foods.add(value);
+                  }
+                }
+                orderData["menu"] = foods;
+                var sendOrder = await authController.sendOrder(orderData);
+                if(sendOrder["status"]){
+                  setState(() {
+                    db.cartItems[widget.data["id"]]["done"] = true;
+                    db.updateDatabase(); 
+                  });
+                  Navigator.pushNamed(context, "/waitingpage", arguments: widget.data);
+                } else {
+                  print(sendOrder["error"]);
+                }
+                setState(() {
+                  loading = true;
+                });
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color.fromRGBO(43, 192, 159, 1),
@@ -1325,8 +1593,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)
                 )
-              ),
-              child: Text(
+              ), 
+              child: loading ? LoadingAnimationWidget.waveDots(
+                          color: Colors.white,
+                          size: 25,
+                        ) : Text(
                 "Payment",
                 style: TextStyle(
                   color: Colors.white,
@@ -1350,7 +1621,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
-                _overflowText(widget.data["restaurant"]["name"], namelimit),
+                _overflowText(widget.data["name"], namelimit),
                 style: TextStyle(
                   fontFamily: "Urbanist",
                   fontWeight: FontWeight.w700,
@@ -1365,12 +1636,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   Row(
                     children: [
                       Icon(
-                        Icons.star,
+                        Icons.location_on_outlined,
                         color: Color.fromRGBO(226, 76, 0, 1),
                         size: 14,
                       ),
                       Text(
-                        widget.data["restaurant"]["rating"].toString(),
+                        "${widget.data["distance"].toString()} km",
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontWeight: FontWeight.w700,
@@ -1384,12 +1655,12 @@ class _CheckoutPageState extends State<CheckoutPage> {
                   Row(
                     children: [
                       Icon(
-                        Icons.location_on_outlined,
+                        Icons.star,
                         color: Color.fromRGBO(226, 76, 0, 1),
                         size: 14,
                       ),
                       Text(
-                        "${widget.data["restaurant"]["distance"].toString()} km",
+                        widget.data["rating"].toString(),
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontWeight: FontWeight.w700,
@@ -1407,7 +1678,8 @@ class _CheckoutPageState extends State<CheckoutPage> {
         leadingWidth: 40,
         leading: GestureDetector(
           onTap: (){
-            Navigator.pop(context);
+           //Navigator.pushNamed(context, "/restaurantpage", arguments: widget.data);
+           Navigator.pop(context);
           },
           child: Padding(
             padding: EdgeInsets.only(left: 20),
@@ -1426,9 +1698,15 @@ class _CheckoutPageState extends State<CheckoutPage> {
             width: double.infinity,
             child: Column(
               children: [
-                orderedItem(),
-                
-                
+                ...db.cartItems[widget.data["id"]].entries.map((entry){
+                if(entry.key != "done"){
+                  return orderedItem(entry.value);
+                } else {
+                  return Container(
+                    height: 0,
+                  );
+                }
+              }).toList()
               ],
             ),
           ),
@@ -1445,6 +1723,11 @@ class _CheckoutPageState extends State<CheckoutPage> {
                 ],
               ),
             ),
+          ),
+          SizedBox(height: 15,),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 20),
+            child: deliveryAddress()
           ),
           SizedBox(height: 15,),
           Container(
@@ -1470,6 +1753,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         color: Color.fromRGBO(239, 239, 239, 1)
                       ),
                       child: TextField(
+                              controller: _note,
                               style: TextStyle(
                                 fontFamily: 'Urbanist',
                                 color: Colors.black,
@@ -1508,7 +1792,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
                         ),
                     ),
                     Text(
-                      "Rp 38.000",
+                      "Rp "+formatNumberWithDots(totalCheckout("subtotal", checkoutData)),
                       style: TextStyle(
                           fontFamily: 'Urbanist',
                           color: Color.fromRGBO(43, 192, 159, 1),
@@ -1532,7 +1816,7 @@ class _CheckoutPageState extends State<CheckoutPage> {
               ],
             ),
           ),
-          paymentDetails(),
+          paymentDetails(checkoutData["discount_price"]),
           SizedBox(height: 50,)
         ],
       ),

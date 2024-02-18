@@ -3,7 +3,13 @@
 import 'package:curved_navigation_bar/curved_navigation_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:foodshare/data/controller/restaurant_controller.dart';
 import 'package:foodshare/data/firebase.dart';
+import 'package:foodshare/data/local_database.dart';
+import 'package:foodshare/data/model/restaurant_model.dart';
+import 'package:hive/hive.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:location/location.dart';
 
 class HomePage extends StatefulWidget {
   HomePage({super.key});
@@ -13,46 +19,47 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  final _myBox = Hive.box("myBox");
+  LocalDatabase db = LocalDatabase();
+
+  @override
+  void initState(){
+    if(_myBox.get("history_items") == null){
+      db.createInitialData();
+      db.updateDatabase();
+    } else{
+      db.loadData();
+    }
+
+    super.initState();
+    setState(() {
+    getLocation();
+    });
+  }
+
   // Variables
   int namelimit = 22;
-  FirebaseService fdb = FirebaseService();
+  //FirebaseService fdb = FirebaseService();
   List restaurantItems = [];
+  RestaurantController restaurantController = RestaurantController();
+  Location currentLocation = Location();
   
   // Actions
+  void getLocation() async{
+    var location = await currentLocation.getLocation();
+    currentLocation.onLocationChanged.listen((LocationData loc){
+      setState(() {
+        db.locations["current_location"] = [loc.latitude ?? 0.0, loc.longitude ?? 0.0];
+        db.updateDatabase();
+      });
+    });
+  }
   String _overflowText(String text, int limit){
     if (text.length >= limit){
       return text.substring(0, limit - 3) + "...";
     } else {
       return text;
     }
-  }
-
-  void fetchData(){
-    setState(() {
-      restaurantItems = fdb.restaurantItems;
-    });
-  }
-
-  void loadData() async {
-    await fdb.fetchData();
-    setState(() {
-      fetchData();
-    });
-  }
-
-  @override
-  void initState(){
-    super.initState();
-    loadData();
-  }
-  List restaurantFoods(id){
-    List foods = [];
-    for(int i = 0; i<fdb.foodItems.length;i++){
-      if(fdb.foodItems[i]["restaurantId"] == id){
-        foods.add(fdb.foodItems[i]);
-      }
-    }
-    return foods;
   }
   void checkDishes(int id, String name, String restaurantImg, num distance, List category, String discount, double rating){
     Map _restaurantData = {
@@ -63,7 +70,6 @@ class _HomePageState extends State<HomePage> {
       "category": category,
       "discount": discount,
       "rating": rating,
-      "foods": restaurantFoods(id)
     }; 
     print(_restaurantData);
     Navigator.pushNamed(context, "/restaurantpage", arguments: _restaurantData);
@@ -264,44 +270,49 @@ class _HomePageState extends State<HomePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        "Deliver to",
-                        style: TextStyle(
-                          fontFamily: "Urbanist",
-                          color: Colors.black,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          Text(
-                            "Current Location",
-                            style: TextStyle(
-                              fontFamily: "Urbanist",
-                              color: Colors.black,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700
-                            ),
+                GestureDetector(
+                  onTap: () {
+                    Navigator.pushNamed(context, "/locationpage");
+                  },
+                  child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Deliver to",
+                          style: TextStyle(
+                            fontFamily: "Urbanist",
+                            color: Colors.black,
+                            fontSize: 16,
                           ),
-                          SizedBox(width: 5,),
-                          Transform.translate(
-                            offset: Offset(0, -2),
-                            child: Transform.rotate(
-                              angle: -90 * 3.1415926535 / 180,
-                              child: Icon(
-                                Icons.arrow_back_ios,
-                                size: 12,
+                        ),
+                        Row(
+                          children: [
+                            Text(
+                              "Current Location",
+                              style: TextStyle(
+                                fontFamily: "Urbanist",
+                                color: Colors.black,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700
                               ),
                             ),
-                          )
-                        ],
-                      ),
-                    ],
-                  ),
+                            SizedBox(width: 5,),
+                            Transform.translate(
+                              offset: Offset(0, -2),
+                              child: Transform.rotate(
+                                angle: -90 * 3.1415926535 / 180,
+                                child: Icon(
+                                  Icons.arrow_back_ios,
+                                  size: 12,
+                                ),
+                              ),
+                            )
+                          ],
+                        ),
+                      ],
+                    ),
+                ),
 
                   Row(
                     children: [
@@ -313,11 +324,16 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       SizedBox(width: 8,),
-                      Transform.translate(
-                        offset: Offset(0, 3),
-                        child: SvgPicture.asset(
-                          "assets/shopping_bag_icon.svg",
-                          fit: BoxFit.scaleDown,
+                      GestureDetector(
+                        onTap: (){
+                          Navigator.pushNamed(context, "/mycartpage");
+                        },
+                        child: Transform.translate(
+                          offset: Offset(0, 3),
+                          child: SvgPicture.asset(
+                            "assets/shopping_bag_icon.svg",
+                            fit: BoxFit.scaleDown,
+                          ),
                         ),
                       ),
                     ],
@@ -393,11 +409,31 @@ class _HomePageState extends State<HomePage> {
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             clipBehavior: Clip.none,
-            child: Row(
-              children: [
-                SizedBox(width: 20,),
-                ...restaurantItems.asMap().entries.map((entry) => topPicks(entry.value))
-              ],
+            child: Container(
+              margin: EdgeInsets.only(left: 20),
+              child: FutureBuilder<List<restaurantModel>>(
+                future: restaurantController.getRestaurants(),
+                builder: (context, snapshot){
+                  if(snapshot.hasData){
+                    return Row(
+                      children: snapshot.data!.map((item){
+                        Map restaurant = {
+                          "id": item.id,
+                          "category": item.category,
+                          "name": item.name,
+                          "img": item.img,
+                          "distance": item.distance,
+                          "discount": item.discount,
+                          "rating": item.rating
+                        };
+                        return topPicks(restaurant);
+                      }).toList(),
+                    );
+                  } else {
+                    return Container();
+                  }
+                }
+              ),
             ),
           ),
           SizedBox(height: 20,),
@@ -416,23 +452,23 @@ class _HomePageState extends State<HomePage> {
                     fontWeight: FontWeight.w700
                   ),
                 ),
-                ElevatedButton(
-                  onPressed: (){},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color.fromRGBO(43, 192, 159, 1),
-                    minimumSize: Size(50, 30),
-                    elevation: 0,
-                    padding: EdgeInsets.symmetric(horizontal: 12)
-                  ),
-                  child: Text(
-                    "See all",
-                    style: TextStyle(
-                      fontFamily: "Urbanist",
-                      color: Colors.white,
-                      fontSize: 15,
-                  ),
-                  ),
-                )
+                // ElevatedButton(
+                //   onPressed: (){},
+                //   style: ElevatedButton.styleFrom(
+                //     backgroundColor: Color.fromRGBO(43, 192, 159, 1),
+                //     minimumSize: Size(50, 30),
+                //     elevation: 0,
+                //     padding: EdgeInsets.symmetric(horizontal: 12)
+                //   ),
+                //   child: Text(
+                //     "See all",
+                //     style: TextStyle(
+                //       fontFamily: "Urbanist",
+                //       color: Colors.white,
+                //       fontSize: 15,
+                //   ),
+                //   ),
+                // )
               ],
             ),
           ),
@@ -468,23 +504,23 @@ class _HomePageState extends State<HomePage> {
                     fontWeight: FontWeight.w700
                   ),
                 ),
-                ElevatedButton(
-                  onPressed: (){},
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color.fromRGBO(43, 192, 159, 1),
-                    minimumSize: Size(50, 30),
-                    elevation: 0,
-                    padding: EdgeInsets.symmetric(horizontal: 12)
-                  ),
-                  child: Text(
-                    "See all",
-                    style: TextStyle(
-                      fontFamily: "Urbanist",
-                      color: Colors.white,
-                      fontSize: 15,
-                  ),
-                  ),
-                )
+                // ElevatedButton(
+                //   onPressed: (){},
+                //   style: ElevatedButton.styleFrom(
+                //     backgroundColor: Color.fromRGBO(43, 192, 159, 1),
+                //     minimumSize: Size(50, 30),
+                //     elevation: 0,
+                //     padding: EdgeInsets.symmetric(horizontal: 12)
+                //   ),
+                //   child: Text(
+                //     "See all",
+                //     style: TextStyle(
+                //       fontFamily: "Urbanist",
+                //       color: Colors.white,
+                //       fontSize: 15,
+                //   ),
+                //   ),
+                // )
               ],
             ),
           ),

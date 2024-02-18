@@ -1,9 +1,18 @@
-// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables
-
+// ignore_for_file: prefer_const_constructors, prefer_const_literals_to_create_immutables, prefer_final_fields
 import 'package:flutter/material.dart';
+import 'package:foodshare/data/controller/restaurant_controller.dart';
+import 'package:foodshare/data/local_database.dart';
+import 'package:foodshare/data/model/restaurant_model.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:intl/intl.dart';
+import 'package:hive/hive.dart';
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
+
 
 class WaitingPage extends StatefulWidget {
-  WaitingPage({super.key});
+  final Map data;
+
+  WaitingPage({required this.data, Key? key}) : super(key: key);
 
   @override
   State<WaitingPage> createState() => _WaitingPageState();
@@ -13,15 +22,34 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
   late AnimationController _controller1;
   late AnimationController _controller2;
   late AnimationController _controller3;
+  RestaurantController restaurantController = RestaurantController();
   bool _showFirstWidget = true;
   bool _showSecondWidget = true;
+  LatLng ugmLocation = LatLng(-7.770717, 110.377724);
+ // GoogleMapController? _controller;
+  //Location currentLocation = Location();
+  Set<Marker> _markers= {
+    Marker(
+      markerId: MarkerId('Home'),
+      position: LatLng(-7.770717, 110.377724)
+    )
+  };
+
+  // Init action
 
   @override
   void initState() {
+    if(_myBox.get("cart_items") == null){
+      db.createInitialData();
+      db.updateDatabase();
+    } else{
+      db.loadData();
+    }
+
     super.initState();
 
     // Duration for each widget's fade-in animation
-    const Duration duration = Duration(seconds: 2);
+    const Duration duration = Duration(seconds: 1);
 
     _controller1 = AnimationController(vsync: this, duration: duration);
     _controller2 = AnimationController(vsync: this, duration: duration);
@@ -30,20 +58,27 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
     // Start animations sequentially
     _controller1.forward();
     _controller1.addStatusListener((status) {
-      setState(() {
-          _showFirstWidget = false;
-        });
       if (status == AnimationStatus.completed) {
-        _controller2.forward();
-        _controller3.forward();
+        Future.delayed(Duration(seconds: 2), () {
+          setState(() {
+            _showFirstWidget = false;
+          });
+          if (status == AnimationStatus.completed) {
+            _controller2.forward();
+            _controller3.forward();
+          }
+        });
       }
+      
     });
 
     _controller2.addStatusListener((status) {
       
       if (status == AnimationStatus.completed) {
-        setState(() {
-          _showSecondWidget = false;
+        Future.delayed(Duration(seconds: 3), () {
+          setState(() {
+            _showSecondWidget = false;
+          });
         });
       }
     });
@@ -56,9 +91,18 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
     _controller3.dispose();
     super.dispose();
   }
+  // Variables
+  final _myBox = Hive.box("myBox");
+  LocalDatabase db = LocalDatabase();
+
+  // Actions
+  String formatNumberWithDots(int number) {
+    final formatter = NumberFormat('#,##0', 'en_US');
+    return formatter.format(number);
+  }
 
   // Widgets
-  Widget _orderItem(){
+  Widget _orderItem(Map food){
     return Container(
           margin: EdgeInsets.only(top: 15),
           child: Row(
@@ -72,7 +116,7 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                   borderRadius: BorderRadius.circular(10),
                   image: DecorationImage(
                     image: NetworkImage(
-                      "https://upload.wikimedia.org/wikipedia/commons/thumb/4/48/Outdoors-man-portrait_%28cropped%29.jpg/1200px-Outdoors-man-portrait_%28cropped%29.jpg"
+                      food["img"]
                     ),
                     fit: BoxFit.cover
                   )
@@ -86,14 +130,14 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        "Ayam Oseng Kangkung",
+                        food["name"],
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontSize: 14
                         ),
                       ),
                       Text(
-                        "x 4",
+                        "x ${food["quantity"]}",
                         style: TextStyle(
                           fontFamily: "Urbanist",
                           fontSize: 14
@@ -107,7 +151,7 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                 child: Container(
                   padding: EdgeInsets.only(top: 8),
                   child: Text(
-                      "Rp 30.000",
+                      "Rp "+formatNumberWithDots((food["price"] - (food["price"] * food["discount"])).floor() * food["quantity"]),
                       style: TextStyle(
                         fontFamily: "Urbanist",
                         fontSize: 13
@@ -343,7 +387,7 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                                               ),
                                             ),
                                             Text(
-                                              "2.1 km",
+                                              "${widget.data["distance"]} km",
                                               style: TextStyle(
                                                 fontFamily: "Urbanist",
                                                 fontSize: 14,
@@ -412,7 +456,7 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          "Lesehan Ci Lin",
+                                          widget.data["name"],
                                           style: TextStyle(
                                             fontFamily: "Urbanist",
                                             color: Colors.black,
@@ -425,9 +469,16 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                                   )
                               ],
                             ),
-                            _orderItem(),
-                            _orderItem(),
-                            _orderItem(),
+                            // _orderItem(),
+                            // _orderItem(),
+                            // _orderItem(),
+                            ...db.cartItems[widget.data["id"]].entries.map((entry){
+                              if(entry.key != "done"){
+                                return _orderItem(entry.value);
+                              } else {
+                                return Container(height: 0,);
+                              }
+                            })
                           ],
                         ),
                       )
@@ -445,16 +496,59 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
           alignment: Alignment.topCenter,
           children: [
             
-            Container(
-              width: double.infinity,
-              height: double.infinity,
-              decoration: BoxDecoration(
-                color: Colors.transparent,
-                image: DecorationImage(
-                  image: AssetImage("assets/map_fake.png")
-                )
-              ),
+            // Container(
+            //   width: double.infinity,
+            //   height: double.infinity,
+            //   decoration: BoxDecoration(
+            //     color: Colors.transparent,
+            //     image: DecorationImage(
+            //       image: AssetImage("assets/map_fake.png")
+            //     )
+            //   ),
+            // ),
+             FutureBuilder<restaurantModel>(
+              future: restaurantController.getRestaurantDetail(widget.data["id"]),
+              builder: (context, snapshot){
+                if(snapshot.hasData){
+                  restaurantModel restaurantData = snapshot.data!;
+                  print(restaurantData.location);
+                  return GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(db.locations["current_location"][0], db.locations["current_location"][1]),
+                      zoom: 13
+                    ),
+                    markers: {
+                      Marker(
+                        markerId: MarkerId('Home'),
+                        position: LatLng(db.locations["current_location"][0], db.locations["current_location"][1])
+                      ),
+                      Marker(
+                        markerId: MarkerId('Restaurant'),
+                        position: LatLng(restaurantData.location[0], restaurantData.location[1])
+                      ),
+                    },
+                    // onMapCreated: (GoogleMapController controller){
+                    //   _controller = controller;
+                    // },
+                  );
+                } else {
+                  print("ERROR : ");
+                  print(snapshot.error);
+                  return Container(height: 0,);
+                  // return GoogleMap(
+                  //   initialCameraPosition: CameraPosition(
+                  //     target: ugmLocation,
+                  //     zoom: 15                    ),
+                  //   markers: _markers,
+                  //   // onMapCreated: (GoogleMapController controller){
+                  //   //   _controller = controller;
+                  //   // },
+                  // );
+                }
+              }
             ),
+
+
             if(_showFirstWidget) Positioned(
                 child: FadeTransition(
                   opacity: _controller1,
@@ -486,20 +580,35 @@ class _WaitingPageState extends State<WaitingPage> with TickerProviderStateMixin
                   child: Container(
                     padding: EdgeInsets.symmetric(horizontal: 20),
                     child: Container(
+                      height: 90,
                       margin: EdgeInsets.only(top: 100),
                       padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       decoration: BoxDecoration(
                         color: Color.fromRGBO(43, 192, 159, 1),
-                        borderRadius: BorderRadius.circular(100)
+                        borderRadius: BorderRadius.circular(30)
                       ),
-                      child: Text(
-                        "Driver found!",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                            fontFamily: "Urbanist",
-                            color: Colors.white,
-                            fontSize: 16,
+                      child: Column(
+                        children: [
+                          Text(
+                            "Yay, you got a driver",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontFamily: "Urbanist",
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                              ),
                           ),
+                          Text(
+                            "Your order has been successfully placed. Please wait for about 30 minutes.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                fontFamily: "Urbanist",
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
+                          ),
+                        ],
                       ),
                     ),
                   ),

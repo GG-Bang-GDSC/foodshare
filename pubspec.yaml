@@ -42,6 +42,17 @@ dependencies:
   flutter_svg: ^2.0.9
   curved_navigation_bar: ^1.0.3
   cloud_firestore: ^4.14.0
+  get: ^4.6.6
+  intl: ^0.17.0
+  firebase_auth: ^4.17.3
+  loading_animation_widget: ^1.2.0+4
+  google_sign_in: ^6.2.1
+  flutter_facebook_auth: ^6.0.4
+  percent_indicator: ^4.2.3
+  google_maps_flutter: ^2.5.3
+  location: ^5.0.3
+  geocoding: ^2.1.1
+  flutter_polyline_points: ^2.0.0
 
 
 dev_dependencies:

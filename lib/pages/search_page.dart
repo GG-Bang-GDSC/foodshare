@@ -18,6 +18,7 @@ class _SearchPageState extends State<SearchPage> {
   void initState(){
     if(_myBox.get("history_items") == null){
       db.createInitialData();
+      db.updateDatabase();
     } else{
       db.loadData();
     }
