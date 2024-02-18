@@ -2,18 +2,35 @@
 
 Introducing FoodShare, an app connecting restaurants with surplus food to users through affordable packages. Addressing food waste, the platform offers an eco-friendly and budget-friendly way for users to explore diverse cuisines. Join us in revolutionizing dining and promoting sustainability with FoodShare.
 
-## Getting Started
+# Setup and Installation
+## Install in your phone
+#### Step 1
+Download app-release.apk from
+```sh
+foodshare/build/app/outputs/flutter-apk/app-release.apk
+```
+#### Step 2
+Install app-release.apk in your phone
 
-This project is a starting point for a Flutter application.
 
-A few resources to get you started if this is your first Flutter project:
+## Install in your desktop
+Before starting the project, make sure you have installed required prerequisites such as dart, flutter, and android studio in your machine.
+#### Step 1
+Clone repository
+```sh
+git clone https://github.com/TheValeHack/Jadkul
+```
+#### Step 2
+Go to project root and install required dependencies:
+```sh
+flutter pub get 
+```
+#### Step 3
+Run the app
+```sh
+flutter run 
+```
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
 
 ## Screenshots
 ### Search page
