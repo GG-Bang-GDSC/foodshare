@@ -18,7 +18,7 @@ Before starting the project, make sure you have installed required prerequisites
 #### Step 1
 Clone repository
 ```sh
-git clone https://github.com/TheValeHack/Jadkul
+git clone https://github.com/GG-Bang-GDSC/foodshare
 ```
 #### Step 2
 Go to project root and install required dependencies:
