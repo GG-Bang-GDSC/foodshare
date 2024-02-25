@@ -5,9 +5,9 @@ Introducing FoodShare, an app connecting restaurants with surplus food to users 
 ## Setup and Installation
 ### Running in your phone
 #### Step 1
-Download app-release.apk from
+Download Foodshare apk from
 ```sh
-foodshare/build/app/outputs/flutter-apk/app-release.apk
+https://github.com/GG-Bang-GDSC/foodshare/releases/tag/v1.0.0
 ```
 #### Step 2
 Install app-release.apk in your phone
